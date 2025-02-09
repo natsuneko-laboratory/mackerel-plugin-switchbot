@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	mp "github.com/mackerelio/go-mackerel-plugin"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/nasa9084/go-switchbot/v4"
 )
 
@@ -22,51 +19,36 @@ type SwitchBotPlugin struct {
 	Prefix          string
 	Targets         []string
 	SwitchBotClient *switchbot.Client
-	CacheDatabase   *sql.DB
+	Statuses        map[string]*switchbot.DeviceStatus
 }
 
-func (p SwitchBotPlugin) GetDeviceTypeViaDeviceID(id string) (string, error) {
-	if id == "" {
-		return "", fmt.Errorf("device id is empty")
-	}
-
-	ret, err := p.CacheDatabase.Query("SELECT type FROM sb_device WHERE id = ?", id)
-	if err != nil {
-		return "", err
-	}
-
-	var t string
-	for ret.Next() {
-		err = ret.Scan(&t)
+func (p SwitchBotPlugin) FetchStatuses() error {
+	for _, target := range p.Targets {
+		status, err := p.SwitchBotClient.Device().Status(context.Background(), target)
 		if err != nil {
-			return "", err
+			return err
 		}
 
-		return t, nil
+		p.Statuses[target] = &status
 	}
 
-	return "", nil
+	return nil
 }
 
 func (p SwitchBotPlugin) FetchMetrics() (map[string]float64, error) {
 	dict := map[string]float64{}
 
 	for _, target := range p.Targets {
-		t, err := p.GetDeviceTypeViaDeviceID(target)
-		if err != nil {
-			continue
+		status, ok := p.Statuses[target]
+		if !ok {
+			return nil, fmt.Errorf("no status for target %s", target)
 		}
 
-		status, err := p.SwitchBotClient.Device().Status(context.Background(), target)
-		if err != nil {
-			return nil, err
-		}
-
-		supports := SupportedMetrics[switchbot.PhysicalDeviceType(t)]
+		supports := SupportedMetrics[status.Type]
 
 		for _, support := range supports {
 			name := fmt.Sprintf("%s.%s", target, support.Name)
-			dict[name] = support.ValueFunc(&status)
+			dict[name] = support.ValueFunc(status)
 		}
 	}
 
@@ -86,13 +68,13 @@ func (p SwitchBotPlugin) GraphDefinition() map[string]mp.Graphs {
 	items := []mp.Metrics{}
 
 	for _, target := range p.Targets {
-		t, err := p.GetDeviceTypeViaDeviceID(target)
-		if err != nil {
+		status, ok := p.Statuses[target]
+		if !ok {
 			continue
 		}
 
 		metrics := []mp.Metrics{}
-		supports := SupportedMetrics[switchbot.PhysicalDeviceType(t)]
+		supports := SupportedMetrics[status.Type]
 
 		for _, support := range supports {
 			metrics = append(metrics, mp.Metrics{
@@ -115,138 +97,32 @@ func (p SwitchBotPlugin) GraphDefinition() map[string]mp.Graphs {
 // --------------------
 // initialize methods
 // --------------------
-
-func InitializeDatabase(path string) (*sql.DB, error) {
-	if path == "" {
-		tmp, err := os.MkdirTemp("", "mackerel-plugin-switchbot")
-		if err != nil {
-			log.Fatal(err)
-			return nil, err
-		}
-
-		path = tmp + "/switchbot.db"
-	}
-
-	db, err := sql.Open("sqlite3", path)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS sb_device (id TEXT PRIMARY KEY, type TEXT, name TEXT, created_at DATETIME, updated_at DATETIME)")
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func RefreshDeviceListIfCacheExpired(c *switchbot.Client, db *sql.DB, revalidate uint64) error {
-	rows, err := db.Query("SELECT COUNT(id) FROM sb_device")
-	if err != nil {
-		return err
-	}
-
-	defer rows.Close()
-	var count uint64
-	for rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			return err
-		}
-	}
-
-	if revalidate > 0 || count == 0 {
-		ret, err := db.Exec(fmt.Sprintf("DELETE FROM sb_device WHERE updated_at < datetime('now', '-%d seconds')", revalidate))
-		if err != nil {
-			return err
-		}
-
-		rowsAffected, err := ret.RowsAffected()
-		if err != nil {
-			return err
-		}
-
-		if rowsAffected > 0 {
-			devices, _, _ := c.Device().List(context.Background())
-
-			for _, device := range devices {
-				_, err = db.Exec("INSERT OR REPLACE INTO sb_device (id, type, name, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))", device.ID, device.Type, device.Name)
-				if err != nil {
-					log.Fatalf("%q: %s\n", err, "INSERT OR REPLACE")
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func GetAllDeviceIds(db *sql.DB) ([]string, error) {
-	rows, err := db.Query("SELECT id FROM sb_device")
-	if err != nil {
-		return nil, err
-	}
-
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		err = rows.Scan(&id)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	return ids, nil
-}
-
 func main() {
 	prefix := flag.String("prefix", "switchbot", "prefix for metrics")
-	path := flag.String("database", "", "cache database for api request")
 	devices := flag.String("devices", "", "comma separated list of devices to fetch values")
-	revalidate := flag.Uint64("revalidate", 0, "revalidate cache database, 0 is disable")
 	accessToken := flag.String("token", "", "access token for switchbot api")
 	secretToken := flag.String("secret", "", "secret token for switchbot api")
 	tempfile := flag.String("tempfile", "", "tempfile")
 
 	flag.Parse()
 
-	db, err := InitializeDatabase(*path)
-	if err != nil {
-		log.Fatalf("%q: %s\n", err, "InitializeDatabase")
-		return
-	}
-
-	defer db.Close()
-
 	c := switchbot.New(*accessToken, *secretToken)
-	err = RefreshDeviceListIfCacheExpired(c, db, *revalidate)
-	if err != nil {
-		log.Fatalf("%q: %s\n", err, "RefreshDeviceListIfCacheExpired")
-		return
-	}
 
 	devicesSlice := strings.Split(*devices, ",")
-	if len(devicesSlice) == 1 && devicesSlice[0] == "" {
-		ids, err := GetAllDeviceIds(db)
-		if err != nil {
-			log.Fatalf("%q: %s\n", err, "GetAllDeviceIds")
-		}
-
-		devicesSlice = append(devicesSlice, ids...)
-	}
-
 	sb := SwitchBotPlugin{
 		Prefix:          *prefix,
 		SwitchBotClient: c,
-		CacheDatabase:   db,
+		Statuses:        map[string]*switchbot.DeviceStatus{},
 		Targets:         devicesSlice,
 	}
 
 	helper := mp.NewMackerelPlugin(sb)
 	helper.Tempfile = *tempfile
+
+	err := sb.FetchStatuses()
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	helper.Run()
 }
@@ -409,7 +285,7 @@ var (
 // Relay Switch 1PM
 // Relat Switch 1
 
-var SupportedMetrics map[switchbot.PhysicalDeviceType][]*SwitchBotMetric = map[switchbot.PhysicalDeviceType][]*SwitchBotMetric{
+var SupportedMetrics = map[switchbot.PhysicalDeviceType][]*SwitchBotMetric{
 	switchbot.Bot:                      {Battery},
 	switchbot.Curtain:                  {Battery},
 	"Curtain3":                         {Battery},
