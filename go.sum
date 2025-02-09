@@ -1,0 +1,14 @@
+github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/mackerelio/go-mackerel-plugin v0.1.5 h1:8k0xrZd1bllGKfki/ndCdQ1Pe/l8MTetfZP76ejtFt0=
+github.com/mackerelio/go-mackerel-plugin v0.1.5/go.mod h1:c1Y27qQnuMBK6QqLrmW5OcDqMLrUGbPo2KEjZd37DH4=
+github.com/mackerelio/golib v1.2.1 h1:SDcDn6Jw3p9bi1N0bg1Z/ilG5qcBB23qL8xNwrU0gg4=
+github.com/mackerelio/golib v1.2.1/go.mod h1:b8ZaapsHGH1FlEJlCqfD98CqafLeyMevyATDlID2BsM=
+github.com/mattn/go-sqlite3 v1.14.24 h1:tpSp2G2KyMnnQu99ngJ47EIkWVmliIizyZBfPrBWDRM=
+github.com/mattn/go-sqlite3 v1.14.24/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
+github.com/nasa9084/go-switchbot v1.0.0 h1:rBoMJvd0kgReKX7ODJ3Ri2wujslQEdI4yqqUSzFPAag=
+github.com/nasa9084/go-switchbot v1.0.0/go.mod h1:9bPyOoTj1Ez9Zd9fQ9IRVgCFcMVyVXzgqo6h1iYvCl0=
+github.com/nasa9084/go-switchbot/v4 v4.0.1 h1:WG7zBvUTQz5bO9SH7fD2kQrR0YSyovmD8LyVn4KBpSs=
+github.com/nasa9084/go-switchbot/v4 v4.0.1/go.mod h1:O48mo/L+Bjk0DI9eJ1hx5+W6DP2kFPsvYCgumfvHKbg=
+golang.org/x/text v0.15.0 h1:h1V/4gjBv8v9cjcR6+AR5+/cIYK5N/WAgiv4xlsEtAk=
+golang.org/x/text v0.15.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
