@@ -10,6 +10,7 @@ version: 1
 
 before:
   hooks:
+    - sudo apt-get install gcc-multilib g++-multilib
     # You may remove this if you don't use go modules.
     - go mod tidy
     # you may remove this if you don't need go generate
